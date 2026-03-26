@@ -1,0 +1,19 @@
+{
+  "name": "echo-invoicing",
+  "version": "1.0.0",
+  "description": "Echo Invoicing & Billing SaaS Worker",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.6.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241205.0",
+    "typescript": "^5.7.2",
+    "wrangler": "^3.95.0"
+  }
+}
