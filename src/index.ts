@@ -711,6 +711,19 @@ async function processScheduled(env: Env): Promise<void> {
 // ─────────────────────────────────────────
 // Export with scheduled handler
 // ─────────────────────────────────────────
+
+app.onError((err, c) => {
+  if (err.message?.includes('JSON')) {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+  console.error(`[echo-invoicing] ${err.message}`);
+  return c.json({ error: 'Internal server error' }, 500);
+});
+
+app.notFound((c) => {
+  return c.json({ error: 'Not found' }, 404);
+});
+
 export default {
   fetch: app.fetch,
   async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
