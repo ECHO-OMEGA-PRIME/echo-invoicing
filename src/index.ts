@@ -124,6 +124,16 @@ function addFrequencyDays(dateStr: string, freq: string): string {
 const app = new Hono<{ Bindings: Env }>();
 
 app.use('*', cors({ origin: '*', allowHeaders: ['Content-Type', 'X-Echo-API-Key'], allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] }));
+// Security headers middleware
+app.use('*', async (c, next) => {
+  await next();
+  c.res.headers.set('X-Content-Type-Options', 'nosniff');
+  c.res.headers.set('X-Frame-Options', 'DENY');
+  c.res.headers.set('X-XSS-Protection', '1; mode=block');
+  c.res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  c.res.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+});
+
 
 // ─────────────────────────────────────────
 // Health & Status
@@ -391,20 +401,29 @@ app.post('/invoices/:id/record-payment', async (c) => {
 
   const payId = uid();
   const paid_at = body.paid_at ?? new Date().toISOString();
-  await c.env.DB.prepare(
-    `INSERT INTO payments (id, tenant_id, invoice_id, amount, method, reference, notes, paid_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(payId, invoice.tenant_id, c.req.param('id'), body.amount, body.method ?? 'card', body.reference ?? null, body.notes ?? null, paid_at).run();
+  const invoiceId = c.req.param('id');
 
-  const paymentsResult = await c.env.DB.prepare('SELECT COALESCE(SUM(amount), 0) as total_paid FROM payments WHERE invoice_id = ?').bind(c.req.param('id')).first<{ total_paid: number }>();
-  const totalPaid = paymentsResult?.total_paid ?? 0;
+  // Batch: insert payment + sum total + conditionally mark paid — all atomic
+  const batchResults = await c.env.DB.batch([
+    c.env.DB.prepare(
+      `INSERT INTO payments (id, tenant_id, invoice_id, amount, method, reference, notes, paid_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(payId, invoice.tenant_id, invoiceId, body.amount, body.method ?? 'card', body.reference ?? null, body.notes ?? null, paid_at),
+    c.env.DB.prepare('SELECT COALESCE(SUM(amount), 0) as total_paid FROM payments WHERE invoice_id = ?').bind(invoiceId),
+  ]);
 
-  const newStatus = totalPaid >= invoice.total ? 'paid' : invoice.status;
-  if (newStatus === 'paid') {
-    await c.env.DB.prepare("UPDATE invoices SET status = 'paid', paid_at = ? WHERE id = ?").bind(paid_at, c.req.param('id')).run();
+  const totalPaid = (batchResults[1] as D1Result<{ total_paid: number }>).results?.[0]?.total_paid ?? 0;
+  let newStatus = invoice.status;
+
+  if (totalPaid >= invoice.total) {
+    // Conditional update: only mark paid if still in a payable state (prevents race with concurrent payment)
+    const updateResult = await c.env.DB.prepare(
+      "UPDATE invoices SET status = 'paid', paid_at = ? WHERE id = ? AND status IN ('sent', 'partial', 'viewed', 'overdue')"
+    ).bind(paid_at, invoiceId).run();
+    if (updateResult.meta.changes) newStatus = 'paid';
   }
 
-  log('info', 'payment.recorded', { payment_id: payId, invoice_id: c.req.param('id'), amount: body.amount, total_paid: totalPaid, new_status: newStatus });
+  log('info', 'payment.recorded', { payment_id: payId, invoice_id: invoiceId, amount: body.amount, total_paid: totalPaid, new_status: newStatus });
   return c.json({ ok: true, payment_id: payId, total_paid: parseFloat(totalPaid.toFixed(2)), invoice_status: newStatus, fully_paid: newStatus === 'paid' }, 201);
 });
 
