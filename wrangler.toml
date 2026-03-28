@@ -25,3 +25,7 @@ service = "echo-email-sender"
 
 [triggers]
 crons = ["0 8 * * *"]
+
+[[analytics_engine_datasets]]
+binding = "ANALYTICS"
+dataset = "echo_metrics"

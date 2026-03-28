@@ -95,7 +95,7 @@ function err(message: string, status = 400, details?: unknown): Response {
 
 function requireAuth(c: { req: { header: (k: string) => string | undefined } }, env: Env): boolean {
   const key = c.req.header('X-Echo-API-Key');
-  return key === env.ECHO_API_KEY || key === 'echo-omega-prime-forge-x-2026';
+  return key === env.ECHO_API_KEY;
 }
 
 function calcInvoiceTotals(items: InvoiceItem[], taxRate: number, discount: number): { subtotal: number; tax_amount: number; total: number } {
