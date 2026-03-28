@@ -128,6 +128,8 @@ app.use('*', cors({ origin: '*', allowHeaders: ['Content-Type', 'X-Echo-API-Key'
 // ─────────────────────────────────────────
 // Health & Status
 // ─────────────────────────────────────────
+app.get('/', (c) => c.json({ service: 'echo-invoicing', version: '1.0.0', status: 'operational' }));
+
 app.get('/health', (c) => {
   return c.json({ status: 'ok', service: 'echo-invoicing', version: '1.0.0', timestamp: new Date().toISOString() });
 });
